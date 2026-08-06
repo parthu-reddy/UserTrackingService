@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-tracking-service
+  namespace: food-delivery
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: event-tracking-service
+  template:
+    metadata:
+      labels:
+        app: event-tracking-service
+    spec:
+      containers:
+        - name: event-tracking-service
+          image: food-delivery/event-tracking-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8101
+          envFrom:
+            - configMapRef:
+                name: advertisement-config
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
