@@ -3,8 +3,10 @@ package com.fooddelivery.advertisement.tracking.util;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.Base64;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Slf4j
 public class CryptoService {
     // In a real system, this would use Google DoubleClick Crypto (AES) or similar
     // For this prototype, we'll assume the string is simply Base64 encoded for demonstration

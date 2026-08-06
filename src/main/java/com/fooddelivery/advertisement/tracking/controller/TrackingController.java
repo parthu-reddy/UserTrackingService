@@ -9,9 +9,11 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/v1/tracking")
+@Slf4j
 public class TrackingController {
     
     private final ImpressionTracker impressionTracker;

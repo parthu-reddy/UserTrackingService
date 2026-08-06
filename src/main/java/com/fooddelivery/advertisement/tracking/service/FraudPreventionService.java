@@ -6,19 +6,15 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class FraudPreventionService {
-
-    private static final Logger log = LoggerFactory.getLogger(FraudPreventionService.class);
-
-    private final StringRedisTemplate redisTemplate;
+private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> rateLimitScript;
     
     // Local fallback cache if Redis goes down. 
