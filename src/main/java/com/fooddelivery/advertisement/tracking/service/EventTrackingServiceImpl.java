@@ -28,13 +28,10 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         this.redisTemplate = redisTemplate;
     }
 
-    private String getCampaignBid(UUID campaignId) {
-        String key = String.format(com.fooddelivery.common.constants.RedisKeyConstants.PREFIX_AD_CAMPAIGN_MAX_BID, campaignId.toString());
-        String bidStr = redisTemplate.opsForValue().get(key);
-        if (bidStr == null) {
-            throw new IllegalStateException("Cannot process billing: Campaign bid price not found in cache for campaign " + campaignId);
-        }
-        return bidStr;
+    private void incrementDailySpend(UUID campaignId, BigDecimal amount) {
+        String spendKey = "campaign:spend:daily:" + campaignId.toString();
+        redisTemplate.opsForValue().increment(spendKey, amount.doubleValue());
+        redisTemplate.expire(spendKey, Duration.ofHours(24));
     }
 
     @Override
@@ -74,10 +71,13 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.IMPRESSION.name());
         trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
         producer.publishTrackingEvent(eventId, trackingEvent);
+        
+        // 4. Update Daily Spend for Pacing
+        incrementDailySpend(campaignId, price);
     }
 
     @Override
-    public void recordClick(UUID campaignId, UUID advertiserId, String deviceId, String ipAddress) {
+    public void recordClick(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
         String identifier = deviceId != null ? deviceId : ipAddress;
         if (!fraudPreventionService.isAllowed(campaignId.toString(), identifier)) {
             throw new IllegalArgumentException("Rate limit exceeded for this device/IP");
@@ -90,7 +90,7 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
             return;
         }
         
-        String bidStr = getCampaignBid(campaignId);
+        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice);
         
         long timeBucket = System.currentTimeMillis() / 10_000;
         String eventId = UUID.nameUUIDFromBytes(
@@ -102,7 +102,7 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         billingEvent.put(EventPayloadConstants.EVENT_ID, eventId);
         billingEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
         billingEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
-        billingEvent.put(EventPayloadConstants.AMOUNT, bidStr);
+        billingEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString());
         billingEvent.put(EventPayloadConstants.CHARGE_CATEGORY, ChargeCategory.AD_CLICK.name());
         billingEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
         producer.publishBillingEvent(eventId, billingEvent);
@@ -112,10 +112,13 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.CLICK.name());
         trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
         producer.publishTrackingEvent(eventId, trackingEvent);
+        
+        // 3. Update Daily Spend for Pacing
+        incrementDailySpend(campaignId, price);
     }
 
     @Override
-    public void recordConversion(UUID campaignId, UUID advertiserId, String deviceId, String ipAddress) {
+    public void recordConversion(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
         String identifier = deviceId != null ? deviceId : ipAddress;
         if (!fraudPreventionService.isAllowed(campaignId.toString(), identifier)) {
             throw new IllegalArgumentException("Rate limit exceeded for this device/IP");
@@ -128,7 +131,7 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
             return;
         }
         
-        String bidStr = getCampaignBid(campaignId);
+        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice);
         
         long timeBucket = System.currentTimeMillis() / 10_000;
         String eventId = UUID.nameUUIDFromBytes(
@@ -140,7 +143,7 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         billingEvent.put(EventPayloadConstants.EVENT_ID, eventId);
         billingEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
         billingEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
-        billingEvent.put(EventPayloadConstants.AMOUNT, bidStr);
+        billingEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString());
         billingEvent.put(EventPayloadConstants.CHARGE_CATEGORY, ChargeCategory.AD_CONVERSION.name());
         billingEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
         producer.publishBillingEvent(eventId, billingEvent);
@@ -150,5 +153,8 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.CONVERSION.name());
         trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
         producer.publishTrackingEvent(eventId, trackingEvent);
+        
+        // 3. Update Daily Spend for Pacing
+        incrementDailySpend(campaignId, price);
     }
 }

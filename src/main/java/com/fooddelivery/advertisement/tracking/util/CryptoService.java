@@ -3,11 +3,12 @@ package com.fooddelivery.advertisement.tracking.util;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.Base64;
-import lombok.extern.slf4j.Slf4j;
 
 @Component
-@Slf4j
 public class CryptoService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CryptoService.class);
+
     // In a real system, this would use Google DoubleClick Crypto (AES) or similar
     // For this prototype, we'll assume the string is simply Base64 encoded for demonstration
     public BigDecimal decryptAuctionPrice(String encryptedPrice) {
@@ -15,10 +16,10 @@ public class CryptoService {
             throw new IllegalArgumentException("Invalid encrypted price macro");
         }
         try {
-            String decoded = new String(Base64.getDecoder().decode(encryptedPrice));
+            String decoded = new String(Base64.getUrlDecoder().decode(encryptedPrice));
             BigDecimal price = new BigDecimal(decoded);
             if (price.compareTo(BigDecimal.ZERO) < 0) {
-                 throw new IllegalStateException("Decrypted price cannot be negative");
+                throw new IllegalStateException("Decrypted price cannot be negative");
             }
             return price;
         } catch (Exception e) {

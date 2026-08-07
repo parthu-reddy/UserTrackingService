@@ -9,14 +9,13 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
-@Slf4j
 public class FraudPreventionService {
-private final StringRedisTemplate redisTemplate;
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(FraudPreventionService.class);
+    private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> rateLimitScript;
-    
     // Local fallback cache if Redis goes down. 
     // Acts as a simple rate limiter: presence of key means rate limited.
     // Expire after 5 seconds to match the 0.2 rps rate limit.
@@ -27,27 +26,17 @@ private final StringRedisTemplate redisTemplate;
         this.rateLimitScript = new DefaultRedisScript<>();
         this.rateLimitScript.setScriptText(LuaScripts.RATE_LIMITER_SCRIPT);
         this.rateLimitScript.setResultType(List.class);
-        
-        this.localFallbackCache = Caffeine.newBuilder()
-            .expireAfterWrite(5, TimeUnit.SECONDS)
-            .maximumSize(100_000)
-            .build();
+        this.localFallbackCache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.SECONDS).maximumSize(100000).build();
     }
 
     public boolean isAllowed(String campaignId, String identifier) {
         if (identifier == null || identifier.isEmpty()) {
             return true; // If no identifier (e.g. no IP/DeviceID), we can't reliably rate limit
         }
-        
         String key = "ratelimit:ad:" + campaignId + ":" + identifier;
         long now = System.currentTimeMillis() / 1000;
-        
         try {
-            List result = redisTemplate.execute(
-                rateLimitScript, 
-                Collections.singletonList(key), 
-                "0.2", "1", String.valueOf(now), "1"
-            );
+            List result = redisTemplate.execute(rateLimitScript, Collections.singletonList(key), "0.2", "1", String.valueOf(now), "1");
             return result != null && !result.isEmpty() && ((Number) result.get(0)).longValue() == 1L;
         } catch (Exception e) {
             log.warn("Redis rate limit failed. Using local Caffeine fallback for key {}", key);
@@ -60,4 +49,3 @@ private final StringRedisTemplate redisTemplate;
         }
     }
 }
-
