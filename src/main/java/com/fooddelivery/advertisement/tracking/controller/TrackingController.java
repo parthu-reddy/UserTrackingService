@@ -32,17 +32,25 @@ public class TrackingController {
     private final ConcurrentHashMap<String, long[]> rateLimitMap = new ConcurrentHashMap<>();
 
     // rateLimitMap value: [windowStart, count]
+    private final ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "rate-limit-cleaner");
+        t.setDaemon(true);
+        return t;
+    });
+
     {
         // Scheduled cleanup of stale rate-limit entries every 60s to prevent memory leaks
-        ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "rate-limit-cleaner");
-            t.setDaemon(true);
-            return t;
-        });
         cleaner.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
             rateLimitMap.entrySet().removeIf(e -> (now - e.getValue()[0]) > WINDOW_MS * 6);
         }, 60, 60, TimeUnit.SECONDS);
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        log.info("Shutting down TrackingController executors");
+        cleaner.shutdownNow();
+        trackingExecutor.shutdownNow();
     }
 
     private boolean isRateLimited(String clientKey) {
