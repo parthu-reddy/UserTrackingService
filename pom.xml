@@ -13,6 +13,7 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
+        <lombok.version>1.18.38</lombok.version>
         <java.version>17</java.version>
         <spring-cloud.version>2023.0.2</spring-cloud.version>
     </properties>
@@ -82,7 +83,36 @@
             <artifactId>spring-cloud-starter-config</artifactId>
         </dependency>
     <dependency><groupId>io.opentelemetry</groupId><artifactId>opentelemetry-exporter-otlp</artifactId></dependency>
-        </dependencies>
+                <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.38</version>
+        </dependency>
+    
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>7.4</version>
+        </dependency>
+    
+        <!-- Auto-generated OpenAPI specs -->
+        
+        
+
+    
+        <!-- Auto-generated OpenAPI specs -->
+        
+        
+    
+        <!-- Auto-generated OpenAPI specs -->
+    
+        <!-- Auto-generated OpenAPI specs -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.5.0</version>
+        </dependency>
+</dependencies>
 
     <dependencyManagement>
         <dependencies>
@@ -101,11 +131,18 @@
                 <scope>import</scope>
             </dependency>
         
+            <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.38</version>
+        </dependency>
     </dependencies>
     </dependencyManagement>
 
     <build>
         <plugins>
+            
+
             
             
                         <plugin>
@@ -129,6 +166,15 @@
                         <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED</arg>
                     </compilerArgs>
                     
+                
+                    
+                <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
             
@@ -159,10 +205,31 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>pre-integration-test</id>
+                        <goals>
+                            <goal>start</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>post-integration-test</id>
+                        <goals>
+                            <goal>stop</goal>
+                        </goals>
+                    </execution>
+                </executions>
+
                 <configuration>
                     
                 </configuration>
             </plugin>
+        
+            
+        
+            
+        
+            
         </plugins>
     </build>
 </project>

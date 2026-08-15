@@ -11,9 +11,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class FraudPreventionService {
     @java.lang.SuppressWarnings("all")
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(FraudPreventionService.class);
+
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<List> rateLimitScript;
     // Local fallback cache if Redis goes down. 

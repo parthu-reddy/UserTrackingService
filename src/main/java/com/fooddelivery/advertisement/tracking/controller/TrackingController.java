@@ -12,9 +12,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @RestController
 @RequestMapping("/api/v1/tracking")
+@lombok.extern.slf4j.Slf4j
 public class TrackingController {
     @java.lang.SuppressWarnings("all")
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingController.class);
+
     private final ImpressionTracker impressionTracker;
     private final ClickTracker clickTracker;
     private final ConversionTracker conversionTracker;

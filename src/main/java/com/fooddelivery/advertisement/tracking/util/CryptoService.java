@@ -5,9 +5,9 @@ import java.math.BigDecimal;
 import java.util.Base64;
 
 @Component
+@lombok.extern.slf4j.Slf4j
 public class CryptoService {
     @java.lang.SuppressWarnings("all")
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CryptoService.class);
 
     // In a real system, this would use Google DoubleClick Crypto (AES) or similar
     // For this prototype, we'll assume the string is simply Base64 encoded for demonstration

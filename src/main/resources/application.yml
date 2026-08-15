@@ -4,6 +4,10 @@ spring:
   application:
     name: event-tracking-service
   kafka:
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -34,7 +38,15 @@ eureka:
     preferIpAddress: true
 
 management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+
