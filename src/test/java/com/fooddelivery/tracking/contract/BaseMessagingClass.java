@@ -16,12 +16,19 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootTest(classes = BaseMessagingClass.TestConfig.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@org.springframework.test.context.ActiveProfiles("contract-test")
 @AutoConfigureMessageVerifier
 @EmbeddedKafka(partitions = 1, topics = {"ad-billing-events", "ad-tracking-events"})
 public abstract class BaseMessagingClass {
 
-    @org.springframework.boot.test.context.TestConfiguration
-    
+    @org.springframework.boot.SpringBootConfiguration
+    @org.springframework.boot.autoconfigure.EnableAutoConfiguration(exclude = {
+            org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration.class,
+            org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
+            org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration.class,
+            org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration.class,
+            org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration.class
+    })
     static class TestConfig {
         @Bean
         public KafkaMessageVerifier kafkaMessageVerifier() {
@@ -35,31 +42,45 @@ public abstract class BaseMessagingClass {
     }
 
     @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private KafkaTemplate<String, Object> kafkaTemplate;
+
+    /**
+     * Publishes through the real TrackingEventProducer with the exact Map that
+     * EventTrackingServiceImpl builds, so the contract is bound to the production payload keys
+     * (EventPayloadConstants) and to the JsonSerializer wire format -- not to a hand-written blob.
+     */
+    private java.util.Map<String, Object> billingEvent() {
+        java.util.Map<String, Object> billingEvent = new java.util.HashMap<>();
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.EVENT_ID,
+                "b64752ce-65f7-503c-a1cb-2ecd2b5412ff");
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.CAMPAIGN_ID,
+                "1d9c4f70-2a83-4b16-9e5d-7c0a3b8f6e41");
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.ADVERTISER_ID,
+                "3e14926d-0c98-5840-abcd-37ec439ddc25");
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.AMOUNT,
+                new java.math.BigDecimal("0.50").toPlainString());
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.CHARGE_CATEGORY,
+                com.fooddelivery.common.enums.ChargeCategory.AD_IMPRESSION.name());
+        billingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.TIMESTAMP,
+                1699999999999L);
+        return billingEvent;
+    }
 
     public void fireAdBilling() {
-        String payload = """
-{
-  "eventId": "ad-555",
-  "type": "AD_CLICK_BILLED",
-  "payload": {
-    "campaignId": 999,
-    "cost": 0.50
-  }
-}""";
-        kafkaTemplate.send("ad-billing-events", payload);
+        java.util.Map<String, Object> billingEvent = billingEvent();
+        new com.fooddelivery.advertisement.tracking.kafka.TrackingEventProducer(kafkaTemplate)
+                .publishBillingEvent((String) billingEvent.get("eventId"), billingEvent);
     }
+
     public void fireAdTracking() {
-        String payload = """
-{
-  "eventId": "ad-666",
-  "type": "AD_CLICKED",
-  "payload": {
-    "campaignId": 999,
-    "userId": "user-123"
-  }
-}""";
-        kafkaTemplate.send("ad-tracking-events", payload);
+        // EventTrackingServiceImpl derives the tracking event from the billing event.
+        java.util.Map<String, Object> trackingEvent = new java.util.HashMap<>(billingEvent());
+        trackingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.EVENT_TYPE,
+                com.fooddelivery.advertisement.tracking.enums.AdTrackingType.IMPRESSION.name());
+        trackingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.DEVICE_ID,
+                "device-abc-123");
+        new com.fooddelivery.advertisement.tracking.kafka.TrackingEventProducer(kafkaTemplate)
+                .publishTrackingEvent((String) trackingEvent.get("eventId"), trackingEvent);
     }
 
 }

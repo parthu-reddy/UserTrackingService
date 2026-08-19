@@ -216,20 +216,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>pre-integration-test</id>
-                        <goals>
-                            <goal>start</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>post-integration-test</id>
-                        <goals>
-                            <goal>stop</goal>
-                        </goals>
-                    </execution>
-                </executions>
 
                 <configuration>
                     
@@ -249,15 +235,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <testFramework>JUNIT5</testFramework>
-                    <contractsMode>REMOTE</contractsMode>
+                    <basePackageForTests>com.fooddelivery.tracking</basePackageForTests>
                     <failOnNoContracts>false</failOnNoContracts>
-                    <contractDependency>
-                        <groupId>${project.groupId}</groupId>
-                        <artifactId>${project.artifactId}</artifactId>
-                        <version>${project.version}</version>
-                    </contractDependency>
-
-                    <contractsRepositoryUrl>git://file:///tmp/FoodDelivery/FoodDeliveryContracts/.git</contractsRepositoryUrl>
                 <baseClassMappings><baseClassMapping><contractPackageRegex>.*messaging.*</contractPackageRegex><baseClassFQN>com.fooddelivery.tracking.contract.BaseMessagingClass</baseClassFQN></baseClassMapping></baseClassMappings></configuration>
             </plugin>
         </plugins>

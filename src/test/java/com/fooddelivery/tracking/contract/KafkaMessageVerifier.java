@@ -20,11 +20,27 @@ public class KafkaMessageVerifier implements MessageVerifierReceiver<Message<?>>
 
     private final Map<String, BlockingQueue<Message<?>>> queues = new ConcurrentHashMap<>();
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * Contracts declare object bodies, so the payload must reach the assertions as a Map.
+     * A raw JSON String would be re-encoded into a JSON string literal, leaving JsonPath
+     * with a primitive root and failing every field matcher.
+     */
+    private static Object parsePayload(String raw) {
+        try {
+            return OBJECT_MAPPER.readValue(raw, Map.class);
+        } catch (Exception e) {
+            return raw;
+        }
+    }
+
     @KafkaListener(id = "contract-test-listener", topics = {"ad-billing-events", "ad-tracking-events"})
     public void listen(ConsumerRecord<String, String> record) {
         Map<String, Object> headers = new HashMap<>();
         record.headers().forEach(h -> headers.put(h.key(), new String(h.value())));
-        Message<String> message = MessageBuilder.createMessage(record.value(), new MessageHeaders(headers));
+        Message<Object> message = MessageBuilder.createMessage(parsePayload(record.value()), new MessageHeaders(headers));
         queues.computeIfAbsent(record.topic(), k -> new LinkedBlockingQueue<>()).add(message);
     }
 
