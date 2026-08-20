@@ -31,8 +31,8 @@ public class FraudPreventionService {
     }
 
     public boolean isAllowed(String campaignId, String identifier) {
-        if (identifier == null || identifier.isEmpty()) {
-            return true; // If no identifier (e.g. no IP/DeviceID), we can't reliably rate limit
+        if (identifier == null || identifier.isEmpty() || identifier.equals("unknown")) {
+            return false; // Fail closed if no identifier
         }
         String key = "ratelimit:ad:" + campaignId + ":" + identifier;
         long now = System.currentTimeMillis() / 1000;
@@ -46,7 +46,7 @@ public class FraudPreventionService {
                 return false; // Already seen within 5 seconds -> Block
             }
             localFallbackCache.put(key, Boolean.TRUE);
-            return true; // First time seeing within 5 seconds -> Allow
+            return false; // Fail closed on redis fallback
         }
     }
 }

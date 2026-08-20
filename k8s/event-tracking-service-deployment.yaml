@@ -18,7 +18,7 @@ spec:
           image: food-delivery/event-tracking-service:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8101
+            - containerPort: 8104
           envFrom:
             - configMapRef:
                 name: advertisement-config

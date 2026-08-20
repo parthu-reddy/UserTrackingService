@@ -8,5 +8,5 @@ spec:
     app: event-tracking-service
   ports:
     - protocol: TCP
-      port: 8101
-      targetPort: 8101
+      port: 8104
+      targetPort: 8104

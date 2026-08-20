@@ -28,133 +28,84 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         this.redisTemplate = redisTemplate;
     }
 
+    private static final String INCREMENT_AND_EXPIRE_SCRIPT = 
+            "local current = redis.call('INCRBY', KEYS[1], ARGV[1]); " +
+            "if tonumber(current) == tonumber(ARGV[1]) then " +
+            "  redis.call('EXPIRE', KEYS[1], ARGV[2]); " +
+            "end; " +
+            "return current;";
+
+    private final org.springframework.data.redis.core.script.RedisScript<Long> incrExpireScript = 
+            new org.springframework.data.redis.core.script.DefaultRedisScript<>(INCREMENT_AND_EXPIRE_SCRIPT, Long.class);
+
     private void incrementDailySpend(UUID campaignId, BigDecimal amount) {
         String spendKey = "campaign:spend:daily:" + campaignId.toString();
-        redisTemplate.opsForValue().increment(spendKey, amount.doubleValue());
-        redisTemplate.expire(spendKey, Duration.ofHours(24));
+        long paise = amount.multiply(new BigDecimal("100")).longValue();
+        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(paise), "86400"); // 24h
+    }
+
+    private void incrementLifetimeSpend(UUID campaignId, BigDecimal amount) {
+        String spendKey = "campaign:spend:lifetime:" + campaignId.toString();
+        long paise = amount.multiply(new BigDecimal("100")).longValue();
+        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(paise), "7776000"); // 90 days
     }
 
     @Override
     public void recordImpression(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
-        String identifier = deviceId != null ? deviceId : ipAddress;
-        if (!fraudPreventionService.isAllowed(campaignId.toString(), identifier)) {
-            throw new IllegalArgumentException("Rate limit exceeded for this device/IP");
-        }
-
-        String idemKey = "idem:imp:" + campaignId + ":" + identifier;
-        Boolean isNew = redisTemplate.opsForValue().setIfAbsent(idemKey, "1", Duration.ofMinutes(5));
-        if (Boolean.FALSE.equals(isNew)) {
-            // Already tracked an impression for this device on this campaign within 5 minutes.
-            return;
-        }
-        
-        // 1. Decrypt Price (Fail fast if invalid)
-        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice);
-        
-        // 2. Publish Billing Event for Wallet Service
-        // Deterministic eventId to deduplicate browser retries (same campaign+device within 10s bucket)
-        long timeBucket = System.currentTimeMillis() / 10_000; // 10-second dedup window
-        String eventId = UUID.nameUUIDFromBytes(
-            ("imp:" + campaignId + ":" + identifier + ":" + timeBucket).getBytes(StandardCharsets.UTF_8)
-        ).toString();
-        Map<String, Object> billingEvent = new HashMap<>();
-        billingEvent.put(EventPayloadConstants.EVENT_ID, eventId);
-        billingEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
-        billingEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
-        billingEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString()); // Strict BigDecimal to string
-        billingEvent.put(EventPayloadConstants.CHARGE_CATEGORY, ChargeCategory.AD_IMPRESSION.name());
-        billingEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
-        producer.publishBillingEvent(eventId, billingEvent);
-        
-        // 3. Publish generic tracking event for Analytics (Clickhouse)
-        Map<String, Object> trackingEvent = new HashMap<>(billingEvent);
-        trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.IMPRESSION.name());
-        trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
-        producer.publishTrackingEvent(eventId, trackingEvent);
-        
-        // 4. Update Daily Spend for Pacing
-        incrementDailySpend(campaignId, price);
+        recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.IMPRESSION, ChargeCategory.AD_IMPRESSION, 5, "imp");
     }
 
     @Override
     public void recordClick(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
-        String identifier = deviceId != null ? deviceId : ipAddress;
-        if (!fraudPreventionService.isAllowed(campaignId.toString(), identifier)) {
-            throw new IllegalArgumentException("Rate limit exceeded for this device/IP");
-        }
-        
-        String idemKey = "idem:click:" + campaignId + ":" + identifier;
-        Boolean isNew = redisTemplate.opsForValue().setIfAbsent(idemKey, "1", Duration.ofMinutes(5));
-        if (Boolean.FALSE.equals(isNew)) {
-            // Already tracked a click for this device on this campaign within 5 minutes.
-            return;
-        }
-        
-        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice);
-        
-        long timeBucket = System.currentTimeMillis() / 10_000;
-        String eventId = UUID.nameUUIDFromBytes(
-            ("click:" + campaignId + ":" + identifier + ":" + timeBucket).getBytes(StandardCharsets.UTF_8)
-        ).toString();
-        
-        // 1. Publish Billing Event (CPC)
-        Map<String, Object> billingEvent = new HashMap<>();
-        billingEvent.put(EventPayloadConstants.EVENT_ID, eventId);
-        billingEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
-        billingEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
-        billingEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString());
-        billingEvent.put(EventPayloadConstants.CHARGE_CATEGORY, ChargeCategory.AD_CLICK.name());
-        billingEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
-        producer.publishBillingEvent(eventId, billingEvent);
-
-        // 2. Publish Tracking Event
-        Map<String, Object> trackingEvent = new HashMap<>(billingEvent);
-        trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.CLICK.name());
-        trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
-        producer.publishTrackingEvent(eventId, trackingEvent);
-        
-        // 3. Update Daily Spend for Pacing
-        incrementDailySpend(campaignId, price);
+        recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.CLICK, ChargeCategory.AD_CLICK, 5, "click");
     }
 
     @Override
     public void recordConversion(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
+        recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.CONVERSION, ChargeCategory.AD_CONVERSION, 30, "conv");
+    }
+
+    private void recordEvent(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress, AdTrackingType trackingType, ChargeCategory chargeCategory, int idemExpiryMinutes, String idemPrefix) {
         String identifier = deviceId != null ? deviceId : ipAddress;
         if (!fraudPreventionService.isAllowed(campaignId.toString(), identifier)) {
             throw new IllegalArgumentException("Rate limit exceeded for this device/IP");
         }
-        
-        String idemKey = "idem:conv:" + campaignId + ":" + identifier;
-        Boolean isNew = redisTemplate.opsForValue().setIfAbsent(idemKey, "1", Duration.ofMinutes(30));
+
+        String idemKey = "idem:" + idemPrefix + ":" + campaignId + ":" + identifier;
+        Boolean isNew = redisTemplate.opsForValue().setIfAbsent(idemKey, "1", Duration.ofMinutes(idemExpiryMinutes));
         if (Boolean.FALSE.equals(isNew)) {
-            // Already tracked a conversion for this device on this campaign within 30 minutes.
+            // Already tracked this event for this device on this campaign within the deduplication window.
             return;
         }
-        
-        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice);
-        
+
+        // 1. Decrypt Price (Fail fast if invalid)
+        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice, campaignId, advertiserId, idemPrefix);
+
+        // 2. Publish Billing Event for Wallet Service (Only for Impressions)
         long timeBucket = System.currentTimeMillis() / 10_000;
         String eventId = UUID.nameUUIDFromBytes(
-            ("conv:" + campaignId + ":" + identifier + ":" + timeBucket).getBytes(StandardCharsets.UTF_8)
+            (idemPrefix + ":" + campaignId + ":" + identifier + ":" + timeBucket).getBytes(StandardCharsets.UTF_8)
         ).toString();
-        
-        // 1. Publish Billing Event (CPA)
-        Map<String, Object> billingEvent = new HashMap<>();
-        billingEvent.put(EventPayloadConstants.EVENT_ID, eventId);
-        billingEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
-        billingEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
-        billingEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString());
-        billingEvent.put(EventPayloadConstants.CHARGE_CATEGORY, ChargeCategory.AD_CONVERSION.name());
-        billingEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
-        producer.publishBillingEvent(eventId, billingEvent);
 
-        // 2. Publish Tracking Event
-        Map<String, Object> trackingEvent = new HashMap<>(billingEvent);
-        trackingEvent.put(EventPayloadConstants.EVENT_TYPE, AdTrackingType.CONVERSION.name());
+        Map<String, Object> baseEvent = new HashMap<>();
+        baseEvent.put(EventPayloadConstants.EVENT_ID, eventId);
+        baseEvent.put(EventPayloadConstants.CAMPAIGN_ID, campaignId.toString());
+        baseEvent.put(EventPayloadConstants.ADVERTISER_ID, advertiserId.toString());
+        baseEvent.put(EventPayloadConstants.AMOUNT, price.toPlainString());
+        baseEvent.put(EventPayloadConstants.CHARGE_CATEGORY, chargeCategory.name());
+        baseEvent.put(EventPayloadConstants.TIMESTAMP, System.currentTimeMillis());
+
+        if (AdTrackingType.IMPRESSION == trackingType) {
+            producer.publishBillingEvent(eventId, baseEvent);
+            // 4. Update Spend for Pacing
+            incrementDailySpend(campaignId, price);
+            incrementLifetimeSpend(campaignId, price);
+        }
+
+        // 3. Publish generic tracking event for Analytics (Clickhouse)
+        Map<String, Object> trackingEvent = new HashMap<>(baseEvent);
+        trackingEvent.put(EventPayloadConstants.EVENT_TYPE, trackingType.name());
         trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
         producer.publishTrackingEvent(eventId, trackingEvent);
-        
-        // 3. Update Daily Spend for Pacing
-        incrementDailySpend(campaignId, price);
     }
 }

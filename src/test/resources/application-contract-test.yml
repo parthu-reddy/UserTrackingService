@@ -71,3 +71,6 @@ ondc:
 delivery:
   executive:
     radius: 5.0
+platform:
+  auction:
+    token-secret: contract-test-secret
