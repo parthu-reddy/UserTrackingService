@@ -5,10 +5,13 @@ The `UserTrackingService` (formerly Event Tracking Service) handles high-through
 
 ## Core Responsibilities
 - **High-Throughput Ingestion**: Ingests tracking pixels and events from client browsers and native SDKs.
-- **Event Buffering**: Apache Kafka provides durable, asynchronous buffering.
+- **At-Least-Once Delivery**: The design is at-least-once delivery with idempotent consumption.
 - **OLAP Analytics**: Feeds data into ClickHouse for high-throughput, real-time reporting dashboards.
 - **Conversion Attribution** — *design intent, not built.* Configurable lookback windows (e.g. 30-day
   click-through, 1-day view-through) are the target; there is no attribution code in the service today.
+
+### OpenRTB Frequency Capping Note
+OpenRTB traffic is intentionally not frequency-capped. The `user.id` supplied by the exchange is in a different namespace from the tracking pixel's `deviceId`, meaning caps cannot match. This is defensible and accepted behavior.
 
 ## Interface Segregation (ISP)
 The system strictly adheres to the Interface Segregation Principle. Rather than forcing all analytical components to implement a massive `AdServerTracker` interface, the platform utilizes segregated, single-method interfaces:
