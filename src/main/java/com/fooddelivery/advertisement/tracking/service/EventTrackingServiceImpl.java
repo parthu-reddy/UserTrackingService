@@ -40,28 +40,55 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
 
     private void incrementDailySpend(UUID campaignId, BigDecimal amount) {
         String spendKey = "campaign:spend:daily:" + campaignId.toString();
-        long paise = amount.multiply(new BigDecimal("100")).longValue();
-        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(paise), "86400"); // 24h
+        long micros = amount.multiply(new BigDecimal("10000")).longValue();
+        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(micros), "86400"); // 24h
     }
 
     private void incrementLifetimeSpend(UUID campaignId, BigDecimal amount) {
         String spendKey = "campaign:spend:lifetime:" + campaignId.toString();
-        long paise = amount.multiply(new BigDecimal("100")).longValue();
-        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(paise), "7776000"); // 90 days
+        long micros = amount.multiply(new BigDecimal("10000")).longValue();
+        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(micros), "7776000"); // 90 days
     }
 
     @Override
     public void recordImpression(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
         recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.IMPRESSION, ChargeCategory.AD_IMPRESSION, 5, "imp");
+        
+        String identifier = deviceId != null ? deviceId : ipAddress;
+        if (identifier != null && !identifier.isBlank() && !"unknown".equals(identifier)) {
+            // Increment Frequency Cap
+            String capKey = "ad:cap:" + identifier + ":" + campaignId;
+            redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(capKey), "1", "86400"); // 24h limit
+            
+            // Store Interaction marker for Attribution
+            String interactionKey = "ad:interaction:" + identifier + ":" + campaignId;
+            redisTemplate.opsForValue().set(interactionKey, "1", Duration.ofDays(7));
+        }
     }
 
     @Override
     public void recordClick(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
         recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.CLICK, ChargeCategory.AD_CLICK, 5, "click");
+        
+        String identifier = deviceId != null ? deviceId : ipAddress;
+        if (identifier != null && !identifier.isBlank() && !"unknown".equals(identifier)) {
+            // Store Interaction marker for Attribution
+            String interactionKey = "ad:interaction:" + identifier + ":" + campaignId;
+            redisTemplate.opsForValue().set(interactionKey, "1", Duration.ofDays(7));
+        }
     }
 
     @Override
     public void recordConversion(UUID campaignId, UUID advertiserId, String encryptedPrice, String deviceId, String ipAddress) {
+        String identifier = deviceId != null ? deviceId : ipAddress;
+        if (identifier != null && !identifier.isBlank() && !"unknown".equals(identifier)) {
+            String interactionKey = "ad:interaction:" + identifier + ":" + campaignId;
+            Boolean hasInteracted = redisTemplate.hasKey(interactionKey);
+            if (!Boolean.TRUE.equals(hasInteracted)) {
+                throw new IllegalArgumentException("Conversion not attributed to recent impression/click");
+            }
+        }
+        
         recordEvent(campaignId, advertiserId, encryptedPrice, deviceId, ipAddress, AdTrackingType.CONVERSION, ChargeCategory.AD_CONVERSION, 30, "conv");
     }
 

@@ -5,9 +5,10 @@ The `UserTrackingService` (formerly Event Tracking Service) handles high-through
 
 ## Core Responsibilities
 - **High-Throughput Ingestion**: Ingests tracking pixels and events from client browsers and native SDKs.
-- **Event Buffering**: Utilizes LMAX Disruptor for lock-free processing and Apache Kafka for durable, asynchronous buffering.
+- **Event Buffering**: Apache Kafka provides durable, asynchronous buffering.
 - **OLAP Analytics**: Feeds data into ClickHouse for high-throughput, real-time reporting dashboards.
-- **Conversion Attribution**: Implements configurable lookback windows (e.g., 30-day click-through, 1-day view-through) for accurate ad attribution.
+- **Conversion Attribution** — *design intent, not built.* Configurable lookback windows (e.g. 30-day
+  click-through, 1-day view-through) are the target; there is no attribution code in the service today.
 
 ## Interface Segregation (ISP)
 The system strictly adheres to the Interface Segregation Principle. Rather than forcing all analytical components to implement a massive `AdServerTracker` interface, the platform utilizes segregated, single-method interfaces:
@@ -118,7 +119,7 @@ sequenceDiagram
 
 ## Resilience & Edge Cases
 - **Financial Integrity**: If the `${AUCTION_PRICE}` decryption fails due to a key rotation mismatch or corrupted payload, the system **FAILS FAST**. It sends the event to a DLQ and does **NOT** process any deductions. No default values are ever used.
-- **Duplicate Events**: Implements exactly-once processing semantics and idempotency keys to handle duplicate tracking events.
+- **Duplicate Events**: Implements at-least-once delivery with idempotent consumption to handle duplicate tracking events.
 - **Ad Fraud & Bot Traffic**: Implements IP-based rate limiting, anomaly detection, and signature-based filtering to drop fraudulent clicks before billing.
 - **Privacy Compliance (GDPR/CCPA)**: Parses IAB TCF consent strings. If consent is denied, it drops the event or strips all PII (IP, Device ID) before writing to Kafka/ClickHouse. (Note: The clearing price is financial data, not PII, so billing still proceeds securely).
 - **Late-Arriving Events**: Implements watermarking and time-windowing logic in the ClickHouse pipeline for delayed mobile clicks.

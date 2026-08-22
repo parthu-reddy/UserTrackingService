@@ -18,6 +18,8 @@ public class TrackingEventProducer {
     }
     
     public void publishTrackingEvent(String eventId, Map<String, Object> payload) {
-        kafkaTemplate.send(KafkaConstants.TOPIC_AD_TRACKING_EVENTS, eventId, payload);
+        String campaignId = (String) payload.get(com.fooddelivery.common.constants.EventPayloadConstants.CAMPAIGN_ID);
+        String key = campaignId != null ? campaignId : eventId;
+        kafkaTemplate.send(KafkaConstants.TOPIC_AD_TRACKING_EVENTS, key, payload);
     }
 }

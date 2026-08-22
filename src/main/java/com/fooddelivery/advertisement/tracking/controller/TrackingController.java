@@ -20,6 +20,7 @@ public class TrackingController {
     private final ClickTracker clickTracker;
     private final ConversionTracker conversionTracker;
     private final com.fooddelivery.common.service.RateLimitingService rateLimitingService;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
     // Dedicated bounded thread pool for tracking I/O (Kafka + Redis).
     // Prevents saturation of ForkJoinPool.commonPool() under peak load.
     private final ExecutorService trackingExecutor = Executors.newFixedThreadPool(Math.max(4, Runtime.getRuntime().availableProcessors() * 2), r -> {
@@ -45,25 +46,36 @@ public class TrackingController {
         return "unknown";
     }
 
-    public TrackingController(ImpressionTracker impressionTracker, ClickTracker clickTracker, ConversionTracker conversionTracker, com.fooddelivery.common.service.RateLimitingService rateLimitingService) {
+    public TrackingController(ImpressionTracker impressionTracker, ClickTracker clickTracker, ConversionTracker conversionTracker, com.fooddelivery.common.service.RateLimitingService rateLimitingService, io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.impressionTracker = impressionTracker;
         this.clickTracker = clickTracker;
         this.conversionTracker = conversionTracker;
         this.rateLimitingService = rateLimitingService;
+        this.meterRegistry = meterRegistry;
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void initMetrics() {
+        meterRegistry.counter("tracking.impression.count").increment(0);
+        meterRegistry.counter("tracking.click.count").increment(0);
+        meterRegistry.counter("tracking.conversion.count").increment(0);
     }
 
     @GetMapping("/impression")
     public CompletableFuture<ResponseEntity<Void>> trackImpression(@RequestParam UUID campaignId, @RequestParam UUID advertiserId, @RequestParam String wp,  // winning price (encrypted)
     @RequestHeader(value = "X-Client-Fingerprint", required = false) String fingerprint) {
         if (isRateLimited(getClientKey(fingerprint))) {
+            meterRegistry.counter("campaign_event_dropped_total", "reason", "rate_limited").increment();
             return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
                 impressionTracker.recordImpression(campaignId, advertiserId, wp, fingerprint, fingerprint);
+                meterRegistry.counter("tracking.impression.count").increment();
                 return ResponseEntity.noContent().<Void>build();
             } catch (IllegalArgumentException e) {
                 // Bad macro/decryption -> drop event, return 400
+                meterRegistry.counter("campaign_event_dropped_total", "reason", "bad_request").increment();
                 return ResponseEntity.badRequest().<Void>build();
             }
         }, trackingExecutor);
@@ -72,13 +84,16 @@ public class TrackingController {
     @GetMapping("/click")
     public CompletableFuture<ResponseEntity<Void>> trackClick(@RequestParam UUID campaignId, @RequestParam UUID advertiserId, @RequestParam String wp, @RequestHeader(value = "X-Client-Fingerprint", required = false) String fingerprint) {
         if (isRateLimited(getClientKey(fingerprint))) {
+            meterRegistry.counter("campaign_event_dropped_total", "reason", "rate_limited").increment();
             return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
                 clickTracker.recordClick(campaignId, advertiserId, wp, fingerprint, fingerprint);
+                meterRegistry.counter("tracking.click.count").increment();
                 return ResponseEntity.noContent().<Void>build();
             } catch (IllegalArgumentException e) {
+                meterRegistry.counter("campaign_event_dropped_total", "reason", "bad_request").increment();
                 return ResponseEntity.badRequest().<Void>build();
             }
         }, trackingExecutor);
@@ -87,13 +102,16 @@ public class TrackingController {
     @GetMapping("/conversion")
     public CompletableFuture<ResponseEntity<Void>> trackConversion(@RequestParam UUID campaignId, @RequestParam UUID advertiserId, @RequestParam String wp, @RequestHeader(value = "X-Client-Fingerprint", required = false) String fingerprint) {
         if (isRateLimited(getClientKey(fingerprint))) {
+            meterRegistry.counter("campaign_event_dropped_total", "reason", "rate_limited").increment();
             return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build());
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
                 conversionTracker.recordConversion(campaignId, advertiserId, wp, fingerprint, fingerprint);
+                meterRegistry.counter("tracking.conversion.count").increment();
                 return ResponseEntity.noContent().<Void>build();
             } catch (IllegalArgumentException e) {
+                meterRegistry.counter("campaign_event_dropped_total", "reason", "bad_request").increment();
                 return ResponseEntity.badRequest().<Void>build();
             }
         }, trackingExecutor);

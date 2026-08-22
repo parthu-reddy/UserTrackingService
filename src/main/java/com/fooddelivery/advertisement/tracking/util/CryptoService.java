@@ -15,8 +15,6 @@ public class CryptoService {
     private final AuctionTokenService auctionTokenService;
     private final StringRedisTemplate redisTemplate;
     
-    @Value("${tracking.accept-legacy-price:false}")
-    private boolean acceptLegacyPrice;
 
     public CryptoService(AuctionTokenService auctionTokenService, StringRedisTemplate redisTemplate) {
         this.auctionTokenService = auctionTokenService;
