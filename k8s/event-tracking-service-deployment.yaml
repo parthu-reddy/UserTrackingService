@@ -14,32 +14,41 @@ spec:
         app: event-tracking-service
     spec:
       containers:
-        - name: event-tracking-service
-          image: food-delivery/event-tracking-service:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8104
-          envFrom:
-            - configMapRef:
-                name: advertisement-config
-          env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: "prod"
-          livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: 8104
-          readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: 8104
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-          securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
+      - env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        envFrom:
+        - configMapRef:
+            name: advertisement-config
+        image: food-delivery/event-tracking-service:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8104
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        name: event-tracking-service
+        ports:
+        - containerPort: 8104
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8104
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
