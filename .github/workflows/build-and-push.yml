@@ -74,7 +74,7 @@ jobs:
           file: UserTrackingService/Dockerfile
           push: true
           tags: hyd.ocir.io/axekmbadoczl/food-delivery/event-tracking-service:${{ github.sha }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
 
       - name: Checkout Deployment Repo
         uses: actions/checkout@v5
