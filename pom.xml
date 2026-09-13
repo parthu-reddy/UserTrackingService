@@ -23,9 +23,23 @@
     <dependencies>
         <dependency>
             <groupId>com.fooddelivery</groupId>
-            <artifactId>common-library</artifactId>
+            <artifactId>common-core</artifactId>
             <version>1.0-SNAPSHOT</version>
-            <type>test-jar</type>
+        </dependency>
+        <dependency>
+            <groupId>com.fooddelivery</groupId>
+            <artifactId>common-persistence</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fooddelivery</groupId>
+            <artifactId>common-web</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fooddelivery</groupId>
+            <artifactId>common-test</artifactId>
+            <version>1.0-SNAPSHOT</version>
             <scope>test</scope>
         </dependency>
 
@@ -37,10 +51,6 @@
         <dependency>
                     <groupId>org.springframework.kafka</groupId>
                     <artifactId>spring-kafka</artifactId>
-                </dependency>
-        <dependency>
-                    <groupId>com.fooddelivery</groupId>
-                    <artifactId>common-library</artifactId>
                 </dependency>
         
         <dependency>
