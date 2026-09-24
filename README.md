@@ -134,3 +134,5 @@ How this service integrates with the broader Food Delivery platform:
 - **FoodDeliveryAppUI (Frontend)**: The UI renders promoted restaurant cards with a "Sponsored" badge. It interacts directly with `UserTrackingService` by firing a tracking pixel (via Intersection Observer for viewability) when the ad renders, and intercepts clicks to fire tracking events before navigating to the restaurant page.
 - **WalletService**: Publishes sanitized, decrypted billing events to `TOPIC_AD_BILLING_EVENTS` for `WalletService` to consume and initiate the financial Saga.
 
+
+<!-- dummy data -->
