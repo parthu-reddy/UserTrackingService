@@ -20,12 +20,14 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
     private final TrackingEventProducer producer;
     private final FraudPreventionService fraudPreventionService;
     private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
+    private final java.time.Clock clock;
     
-    public EventTrackingServiceImpl(CryptoService cryptoService, TrackingEventProducer producer, FraudPreventionService fraudPreventionService, org.springframework.data.redis.core.StringRedisTemplate redisTemplate) {
+    public EventTrackingServiceImpl(CryptoService cryptoService, TrackingEventProducer producer, FraudPreventionService fraudPreventionService, org.springframework.data.redis.core.StringRedisTemplate redisTemplate, java.time.Clock clock) {
         this.cryptoService = cryptoService;
         this.producer = producer;
         this.fraudPreventionService = fraudPreventionService;
         this.redisTemplate = redisTemplate;
+        this.clock = clock;
     }
 
     private static final String INCREMENT_AND_EXPIRE_SCRIPT = 
@@ -38,10 +40,17 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
     private final org.springframework.data.redis.core.script.RedisScript<Long> incrExpireScript = 
             new org.springframework.data.redis.core.script.DefaultRedisScript<>(INCREMENT_AND_EXPIRE_SCRIPT, Long.class);
 
-    private void incrementDailySpend(UUID campaignId, BigDecimal amount) {
-        String spendKey = "campaign:spend:daily:" + campaignId.toString();
+    /**
+     * Adds to the campaign's spend for {@code spendDay} of its advertiser's calendar. The day is in
+     * the key. It used to be one key per campaign expiring 24h after its first impression: a rolling
+     * window that the pacing engine read as "since midnight", so after midnight yesterday's evening
+     * spend still counted and pacing throttled the campaign to zero. TimezoneCorrectness_2026-09-25, D6.
+     */
+    private void incrementDailySpend(UUID campaignId, java.time.LocalDate spendDay, BigDecimal amount) {
+        String spendKey = com.fooddelivery.common.constants.RedisKeyConstants.dailySpendKey(campaignId, spendDay);
         long micros = amount.multiply(new BigDecimal("10000")).longValue();
-        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(micros), "86400"); // 24h
+        redisTemplate.execute(incrExpireScript, java.util.Collections.singletonList(spendKey), String.valueOf(micros),
+                String.valueOf(com.fooddelivery.common.constants.RedisKeyConstants.DAILY_SPEND_TTL.toSeconds()));
     }
 
     private void incrementLifetimeSpend(UUID campaignId, BigDecimal amount) {
@@ -105,8 +114,13 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
             return;
         }
 
-        // 1. Decrypt Price (Fail fast if invalid)
-        BigDecimal price = cryptoService.decryptAuctionPrice(encryptedPrice, campaignId, advertiserId, idemPrefix);
+        // 1. Verify the token (fail fast if invalid): the price, and the advertiser's zone
+        com.fooddelivery.common.security.AuctionTokenService.AuctionToken token =
+                cryptoService.verifyAuctionToken(encryptedPrice, campaignId, advertiserId, idemPrefix);
+        BigDecimal price = token.getPriceAsBigDecimal();
+        // The one place the spend day is decided: now, on the advertiser's calendar. The budget
+        // counter and the performance report (via spendDay on the tracking event) both use it.
+        java.time.LocalDate spendDay = com.fooddelivery.common.time.BusinessCalendar.localDate(clock.instant(), token.timeZone());
 
         // 2. Publish Billing Event for Wallet Service (Only for Impressions)
         long timeBucket = System.currentTimeMillis() / 10_000;
@@ -125,13 +139,14 @@ public class EventTrackingServiceImpl implements ImpressionTracker, ClickTracker
         if (AdTrackingType.IMPRESSION == trackingType) {
             producer.publishBillingEvent(eventId, baseEvent);
             // 4. Update Spend for Pacing
-            incrementDailySpend(campaignId, price);
+            incrementDailySpend(campaignId, spendDay, price);
             incrementLifetimeSpend(campaignId, price);
         }
 
         // 3. Publish generic tracking event for Analytics (Clickhouse)
         Map<String, Object> trackingEvent = new HashMap<>(baseEvent);
         trackingEvent.put(EventPayloadConstants.EVENT_TYPE, trackingType.name());
+        trackingEvent.put(EventPayloadConstants.SPEND_DAY, spendDay.toString());
         trackingEvent.put(EventPayloadConstants.DEVICE_ID, deviceId);
         producer.publishTrackingEvent(eventId, trackingEvent);
     }

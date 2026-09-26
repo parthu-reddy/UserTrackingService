@@ -74,6 +74,8 @@ public abstract class BaseMessagingClass {
                 com.fooddelivery.advertisement.tracking.enums.AdTrackingType.IMPRESSION.name());
         trackingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.DEVICE_ID,
                 "device-abc-123");
+        // The advertiser-calendar day, decided by EventTrackingServiceImpl from the token's zone.
+        trackingEvent.put(com.fooddelivery.common.constants.EventPayloadConstants.SPEND_DAY, "2026-09-25");
         new com.fooddelivery.advertisement.tracking.kafka.TrackingEventProducer(kafkaTemplate)
                 .publishTrackingEvent((String) trackingEvent.get("eventId"), trackingEvent);
     }

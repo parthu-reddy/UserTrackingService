@@ -21,21 +21,26 @@ public class CryptoService {
         this.redisTemplate = redisTemplate;
     }
 
-    public BigDecimal decryptAuctionPrice(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId) {
+    /**
+     * Verifies the auction token and returns it whole: the price to charge and the advertiser's zone,
+     * which decides the day the charge counts against. A price alone is not enough to book spend
+     * correctly. TimezoneCorrectness_2026-09-25.
+     */
+    public AuctionTokenService.AuctionToken verifyAuctionToken(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId) {
         if (encryptedPrice == null || encryptedPrice.isEmpty() || encryptedPrice.equals(com.fooddelivery.common.constants.AdMacroConstants.MACRO_AUCTION_PRICE)) {
             throw new IllegalArgumentException("Invalid encrypted price macro");
         }
         return verifyAndCheckReplay(encryptedPrice, expectedCampaignId, expectedAdvertiserId, "default");
     }
 
-    public BigDecimal decryptAuctionPrice(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId, String eventContext) {
+    public AuctionTokenService.AuctionToken verifyAuctionToken(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId, String eventContext) {
         if (encryptedPrice == null || encryptedPrice.isEmpty() || encryptedPrice.equals(com.fooddelivery.common.constants.AdMacroConstants.MACRO_AUCTION_PRICE)) {
             throw new IllegalArgumentException("Invalid encrypted price macro");
         }
         return verifyAndCheckReplay(encryptedPrice, expectedCampaignId, expectedAdvertiserId, eventContext);
     }
 
-    private BigDecimal verifyAndCheckReplay(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId, String eventContext) {
+    private AuctionTokenService.AuctionToken verifyAndCheckReplay(String encryptedPrice, UUID expectedCampaignId, UUID expectedAdvertiserId, String eventContext) {
         try {
             AuctionTokenService.AuctionToken token = auctionTokenService.verify(encryptedPrice);
             
@@ -62,7 +67,7 @@ public class CryptoService {
                 throw new IllegalArgumentException("Token expired");
             }
             
-            return price;
+            return token;
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to decrypt auction price: " + e.getMessage());
         }
